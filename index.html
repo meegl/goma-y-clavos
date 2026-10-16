@@ -66,7 +66,6 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
         <button id="undo" title="Deshacer (Ctrl+Z)">Deshacer</button>
         <button id="redo" title="Rehacer (Ctrl+Mayús+Z)">Rehacer</button>
       </div>
-      <button id="reset" title="Volver a la composición inicial">Inicio</button>
       <button id="rnd" title="Composición aleatoria compacta (R)">Aleatorio</button>
       <button id="guides" aria-pressed="true" title="Mostrar guías de edición">Guías</button>
       <button id="clean" aria-pressed="false" title="Vista previa de lo que se exporta, sin guías (P)">Vista limpia</button>
@@ -751,10 +750,11 @@ function defaults(){
     caps:{a:'TANGENT series.012',b:'no.004',c:''},
     show:{grid:false,constr:false,empal:false,texts:false}};
 }
+var fresh=true;
 function load(){
   var d=defaults();
   try{var j=JSON.parse(localStorage.getItem(KEY)||'null'); if(j&&j.nodes&&j.edges&&FORMATS.some(function(f){return f.id===j.fmt})){
-    d.fmt=j.fmt;d.cols=+j.cols||12;d.f=+j.f||0;d.snap=!!j.snap;d.snapSl=!!j.snapSl;d.nodes=j.nodes;d.edges=j.edges;d.caps=j.caps||d.caps;d.show=j.show||d.show;}}catch(e){}
+    fresh=false;d.fmt=j.fmt;d.cols=+j.cols||12;d.f=+j.f||0;d.snap=!!j.snap;d.snapSl=!!j.snapSl;d.nodes=j.nodes;d.edges=j.edges;d.caps=j.caps||d.caps;d.show=j.show||d.show;}}catch(e){}
   return d;
 }
 S=load();
@@ -919,7 +919,7 @@ function removeNode(i){
 }
 $('del').addEventListener('click',function(){if(sel<0)return;pushHist();removeNode(sel);changed()});
 $('dup').addEventListener('click',function(){if(sel<0)return;pushHist();var n=S.nodes[sel],c=cell();S.nodes.push({x:Math.min(W,n.x+c),y:Math.min(H(),n.y+c),r:n.r});sel=S.nodes.length-1;changed()});
-function randomize(){
+function randomize(first){
   var c=cell(),HH=H(),pool=[.5,.75,1,1.25,1.5,2,2.5],n=4+Math.floor(Math.random()*4),mg=c,nodes=[],edges=[],tries=0;
   function rnd(a,b){return a+Math.random()*(b-a)}
   function pick(a){return a[Math.floor(Math.random()*a.length)]}
@@ -942,11 +942,10 @@ function randomize(){
   nodes.forEach(function(o){x0=Math.min(x0,o.x-o.r);x1=Math.max(x1,o.x+o.r);y0=Math.min(y0,o.y-o.r);y1=Math.max(y1,o.y+o.r)});
   var dx=W/2-(x0+x1)/2,dy=HH/2-(y0+y1)/2;if(S.snap){dx=Math.round(dx/c)*c;dy=Math.round(dy/c)*c}
   nodes.forEach(function(o){o.x+=dx;o.y+=dy});
-  pushHist();S.nodes=nodes;S.edges=edges;S.f=Math.min(Math.round(rnd(.35,1.1)*c*2)/2,c*2);sel=-1;from=-1;
+  if(!first)pushHist();S.nodes=nodes;S.edges=edges;S.f=Math.min(Math.round(rnd(.35,1.1)*c*2)/2,c*2);sel=-1;from=-1;
   $('f').value=S.f;changed();
 }
 $('rnd').addEventListener('click',randomize);
-$('reset').addEventListener('click',function(){pushHist();S=defaults();sel=-1;from=-1;syncAll()});
 $('undo').addEventListener('click',function(){if(!hist.length)return;redo.push(snapshot());restore(hist.pop())});
 $('redo').addEventListener('click',function(){if(!redo.length)return;hist.push(snapshot());restore(redo.pop())});
 function setClean(v){clean=v;$('clean').setAttribute('aria-pressed',v);redraw()}
@@ -1016,6 +1015,7 @@ $('copy').addEventListener('click',function(){
 new ResizeObserver(function(){resize()}).observe(stage);
 window.addEventListener('resize',resize);
 syncAll();
+if(fresh)randomize(true);
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(redraw);
 })();
 </script>
