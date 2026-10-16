@@ -62,6 +62,7 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
         <button data-mode="move" aria-pressed="true" title="Mover y cambiar radio (V)">Mover</button>
         <button data-mode="add" aria-pressed="false" title="Añadir círculo (A)">Añadir</button>
         <button data-mode="connect" aria-pressed="false" title="Unir con cápsula (C)">Unir</button>
+        <button data-mode="loop" aria-pressed="false" title="Trazar contorno: pulsa los círculos en orden (O)">Contorno</button>
       </div>
       <div class="seg" role="group" aria-label="Historial">
         <button id="undo" title="Deshacer (Ctrl+Z)">Deshacer</button>
@@ -85,6 +86,7 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
           <div class="sl"><span>Y (mm)</span><input type="number" id="nyn" step="0.1"><input type="range" id="ny"></div>
           <div class="sl"><span>Radio (mm)</span><input type="number" id="nrn" step="0.1" min="0.5"><input type="range" id="nr"></div>
         </div>
+        <label class="inline"><input type="checkbox" id="nneg">Negativo (−): el contorno lo rodea por fuera</label>
         <label class="inline"><input type="checkbox" id="snapSl">Imán en sliders</label>
         <div class="btns">
           <button id="dup">Duplicar</button>
@@ -99,6 +101,13 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
         <input type="range" id="f" min="0" max="100" step="1">
       </label>
       <p class="hint">Es el radio de las curvas cóncavas entre círculos. Con 0 las uniones quedan en ángulo vivo.</p>
+    </section>
+
+    <section>
+      <h2>Contorno</h2>
+      <p class="none" id="loopinfo"></p>
+      <p class="hint">Con «Contorno», pulsa los círculos en orden alrededor de la forma, como una goma elástica alrededor de clavos. Los negativos (N) la empujan desde fuera. Pulsar el último círculo lo quita. Mientras haya contorno, la forma sale de él y no de las uniones ni del empalme.</p>
+      <div class="btns"><button id="loopClr" class="danger">Vaciar contorno</button></div>
     </section>
 
     <section>
@@ -666,6 +675,65 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
 
 </script>
 <script>
+/* Tangentes · contorno de goma
+ * Un contorno cerrado que recorre círculos en orden, como una goma elástica
+ * alrededor de clavos. Los círculos positivos quedan dentro (arco convexo) y
+ * los negativos empujan desde fuera (arco cóncavo). Entre dos círculos
+ * seguidos va una recta tangente: exterior si tienen el mismo signo y
+ * cruzada si tienen signo distinto.
+ */
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.TB = factory();
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+  var TAU = Math.PI * 2, EPS = 1e-7;
+
+  function fmt(v) { return String(Math.round(v * 1000) / 1000); }
+  function normAng(a) { a = a % TAU; return a < 0 ? a + TAU : a; }
+
+  // c: [{x,y,r,neg}] en el orden del contorno
+  function solve(c) {
+    var res = { d: '', balls: [], ok: true, err: '' };
+    var seq = c.filter(function (p, i) { var q = c[(i + c.length - 1) % c.length]; return c.length < 2 || p !== q; });
+    if (!seq.length) return res;
+    seq.forEach(function (p) { if (p.neg) res.balls.push({ x: p.x, y: p.y, r: p.r }); });
+    if (seq.length === 1) {
+      var o = seq[0];
+      if (!o.neg) res.d = 'M' + fmt(o.x - o.r) + ' ' + fmt(o.y) + 'a' + fmt(o.r) + ' ' + fmt(o.r) + ' 0 1 0 ' + fmt(2 * o.r) + ' 0a' + fmt(o.r) + ' ' + fmt(o.r) + ' 0 1 0 ' + fmt(-2 * o.r) + ' 0Z';
+      return res;
+    }
+    // recorrido en sentido horario en pantalla (y hacia abajo)
+    var area = 0;
+    seq.forEach(function (p, i) { var q = seq[(i + 1) % seq.length]; area += p.x * q.y - q.x * p.y; });
+    if (area < 0) seq = seq.slice().reverse();
+    var n = seq.length, segs = [];
+    for (var i = 0; i < n; i++) {
+      var A = seq[i], B = seq[(i + 1) % n];
+      var ra = A.neg ? -A.r : A.r, rb = B.neg ? -B.r : B.r;
+      var dx = B.x - A.x, dy = B.y - A.y, L = Math.sqrt(dx * dx + dy * dy), a = -(rb - ra) / L;
+      if (!(L > EPS) || Math.abs(a) >= 1) { res.ok = false; res.err = 'cerca'; return res; }
+      var ux = dx / L, uy = dy / L, b = Math.sqrt(1 - a * a);
+      // normal hacia fuera del contorno
+      var nx = a * ux + b * uy, ny = a * uy - b * ux;
+      segs.push({ p0: [A.x + ra * nx, A.y + ra * ny], p1: [B.x + rb * nx, B.y + rb * ny] });
+    }
+    var parts = ['M' + fmt(segs[0].p0[0]) + ' ' + fmt(segs[0].p0[1])];
+    for (i = 0; i < n; i++) {
+      var s = segs[i], nx2 = segs[(i + 1) % n], C = seq[(i + 1) % n];
+      parts.push('L' + fmt(s.p1[0]) + ' ' + fmt(s.p1[1]));
+      var t0 = Math.atan2(s.p1[1] - C.y, s.p1[0] - C.x), t1 = Math.atan2(nx2.p0[1] - C.y, nx2.p0[0] - C.x);
+      var span = C.neg ? normAng(t0 - t1) : normAng(t1 - t0);
+      if (span * C.r > 1e-6 && span < TAU - 1e-9) parts.push('A' + fmt(C.r) + ' ' + fmt(C.r) + ' 0 ' + (span > Math.PI ? 1 : 0) + ' ' + (C.neg ? 0 : 1) + ' ' + fmt(nx2.p0[0]) + ' ' + fmt(nx2.p0[1]));
+    }
+    parts.push('Z');
+    res.d = parts.join('');
+    return res;
+  }
+
+  return { solve: solve };
+});
+
 /* Tangentes · exportador SVG (capas con nombre, listo para Illustrator) */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -745,7 +813,7 @@ var GUIDE='#2B4BFF';
 var S, hist=[], redo=[], mode='move', sel=-1, from=-1, hover=-1, hoverE=-1, drag=null, res=null, showGuides=true, clean=false, raf=0, saveT=0;
 
 function defaults(){
-  return {fmt:'a4v',cols:12,f:30,snap:true,snapSl:false,
+  return {fmt:'a4v',cols:12,f:30,snap:true,snapSl:false,loop:[],
     nodes:[{x:150,y:250,r:75},{x:150,y:600,r:50},{x:450,y:250,r:75},{x:450,y:600,r:50},{x:300,y:450,r:62.5}],
     edges:[[0,1],[2,3],[0,4],[2,4]],
     caps:{a:'TANGENT series.012',b:'no.004',c:''},
@@ -755,7 +823,7 @@ var fresh=true;
 function load(){
   var d=defaults();
   try{var j=JSON.parse(localStorage.getItem(KEY)||'null'); if(j&&j.nodes&&j.edges&&FORMATS.some(function(f){return f.id===j.fmt})){
-    fresh=false;d.fmt=j.fmt;d.cols=+j.cols||12;d.f=+j.f||0;d.snap=!!j.snap;d.snapSl=!!j.snapSl;d.nodes=j.nodes;d.edges=j.edges;d.caps=j.caps||d.caps;d.show=j.show||d.show;}}catch(e){}
+    fresh=false;d.fmt=j.fmt;d.cols=+j.cols||12;d.f=+j.f||0;d.snap=!!j.snap;d.snapSl=!!j.snapSl;d.nodes=j.nodes;d.edges=j.edges;d.loop=Array.isArray(j.loop)?j.loop:[];d.caps=j.caps||d.caps;d.show=j.show||d.show;}}catch(e){}
   return d;
 }
 S=load();
@@ -771,7 +839,16 @@ var $=function(id){return document.getElementById(id)};
 var scale=1, dpr=1;
 
 /* ---------- cálculo ---------- */
+function loopCircles(){return S.loop.map(function(i){return S.nodes[i]}).filter(Boolean)}
 function compute(){
+  if(S.loop.length){
+    var lr=TB.solve(loopCircles()), st0=$('status');
+    res={d:lr.d,balls:lr.balls,ok:lr.ok,loops:lr.d?1:0};
+    var ng=loopCircles().filter(function(n){return n.neg}).length;
+    if(!lr.ok){st0.textContent='Contorno imposible: dos círculos seguidos se tocan o se solapan. Sepáralos un poco.';st0.className='status mono warn';}
+    else{st0.textContent='Contorno de '+S.loop.length+' círculo'+(S.loop.length===1?'':'s')+' · '+ng+' negativo'+(ng===1?'':'s');st0.className='status mono';}
+    return;
+  }
   try{ res=TG.solve(S.nodes.map(function(n){return {x:n.x,y:n.y,r:n.r}}),S.edges,S.f); }
   catch(e){ res={d:'',balls:[],ok:false,fallback:true}; }
   var st=$('status');
@@ -808,8 +885,11 @@ function paint(c,sc,ex,transp){
 function drawGuides(px){
   ctx.strokeStyle=GUIDE; ctx.fillStyle=GUIDE; ctx.lineWidth=1.2*px;
   ctx.setLineDash([5*px,4*px]);
-  S.edges.forEach(function(e){var a=S.nodes[e[0]],b=S.nodes[e[1]];if(!a||!b)return;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()});
+  if(!S.loop.length)S.edges.forEach(function(e){var a=S.nodes[e[0]],b=S.nodes[e[1]];if(!a||!b)return;ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke()});
+  var lc=loopCircles();
+  if(lc.length>1){ctx.beginPath();lc.forEach(function(n,j){if(j)ctx.lineTo(n.x,n.y);else ctx.moveTo(n.x,n.y)});ctx.closePath();ctx.stroke()}
   ctx.setLineDash([]);
+  if(mode==='loop'){ctx.font=(11*px)+'px "Spline Sans Mono",monospace';ctx.textAlign='left';lc.forEach(function(n,j){ctx.fillText(String(j+1),n.x+5*px,n.y-5*px)})}
   S.nodes.forEach(function(n,i){
     ctx.beginPath();ctx.arc(n.x,n.y,2.6*px,0,Math.PI*2);ctx.fill();
     if(i===hover&&i!==sel){ctx.lineWidth=1.2*px;ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.stroke();}
@@ -849,6 +929,8 @@ function syncAll(){
 function syncPanel(){
   var k=K();$('fval').textContent=(S.f*k).toFixed(1)+' mm';$('f').value=S.f;
   var n=S.nodes[sel];$('selbox').hidden=!n;$('nosel').hidden=!!n;
+  $('loopinfo').textContent=S.loop.length?S.loop.length+' círculo'+(S.loop.length===1?'':'s')+' en el contorno.':'Sin contorno: la forma sale de las uniones.';$('loopClr').disabled=!S.loop.length;
+  if(n)$('nneg').checked=!!n.neg;
   if(n){
     var cs=S.snapSl?cell()*k:0.1, rs=S.snapSl?cell()*k/4:0.1;
     cfg('nx',0,W*k,cs,n.x*k);cfg('ny',0,H()*k,cs,n.y*k);cfg('nr',S.snapSl?rs:0.5,W*k/2,rs,n.r*k);
@@ -871,6 +953,11 @@ cv.addEventListener('pointerdown',function(e){
   if(mode==='add'){
     pushHist();var q=clampPt(snapPt(p));S.nodes.push({x:q.x,y:q.y,r:snapR(cell())});sel=S.nodes.length-1;changed();return;
   }
+  if(mode==='loop'){
+    var hl=hitNode(p);if(hl<0)return;
+    pushHist();if(S.loop[S.loop.length-1]===hl)S.loop.pop();else S.loop.push(hl);
+    sel=hl;changed();return;
+  }
   if(mode==='connect'){
     var he=hitEdge(p);
     if(he>=0){pushHist();S.edges.splice(he,1);hoverE=-1;changed();return}
@@ -889,7 +976,7 @@ cv.addEventListener('pointerdown',function(e){
 cv.addEventListener('pointermove',function(e){
   var p=toWorld(e);
   if(!drag){var h=hitNode(p),he=mode==='connect'?hitEdge(p):-1;if(h!==hover||he!==hoverE){hover=h;hoverE=he;redraw()}
-    cv.style.cursor=he>=0?'pointer':mode==='add'?'crosshair':(hitHandle(p)?'ew-resize':(h>=0?(mode==='move'?'grab':'pointer'):'default'));return}
+    cv.style.cursor=he>=0?'pointer':mode==='loop'?(h>=0?'pointer':'default'):mode==='add'?'crosshair':(hitHandle(p)?'ew-resize':(h>=0?(mode==='move'?'grab':'pointer'):'default'));return}
   var n=S.nodes[drag.i];if(!n)return;
   if(!drag.pushed){pushHist();drag.pushed=true}
   if(drag.t==='m'){var q=clampPt(snapPt({x:p.x-drag.dx,y:p.y-drag.dy}));n.x=q.x;n.y=q.y}
@@ -916,10 +1003,11 @@ document.querySelectorAll('[data-mode]').forEach(function(b){b.addEventListener(
 function removeNode(i){
   S.nodes.splice(i,1);
   S.edges=S.edges.filter(function(e){return e[0]!==i&&e[1]!==i}).map(function(e){return [e[0]>i?e[0]-1:e[0],e[1]>i?e[1]-1:e[1]]});
+  S.loop=S.loop.filter(function(k){return k!==i}).map(function(k){return k>i?k-1:k}).filter(function(k,j,a){return !j||k!==a[j-1]});
   sel=-1;from=-1;
 }
 $('del').addEventListener('click',function(){if(sel<0)return;pushHist();removeNode(sel);changed()});
-$('dup').addEventListener('click',function(){if(sel<0)return;pushHist();var n=S.nodes[sel],c=cell();S.nodes.push({x:Math.min(W,n.x+c),y:Math.min(H(),n.y+c),r:n.r});sel=S.nodes.length-1;changed()});
+$('dup').addEventListener('click',function(){if(sel<0)return;pushHist();var n=S.nodes[sel],c=cell();S.nodes.push({x:Math.min(W,n.x+c),y:Math.min(H(),n.y+c),r:n.r,neg:!!n.neg});sel=S.nodes.length-1;changed()});
 function randomize(first){
   var c=cell(),HH=H(),pool=[.5,.75,1,1.25,1.5,2,2.5],n=4+Math.floor(Math.random()*4),mg=c,nodes=[],edges=[],tries=0;
   function rnd(a,b){return a+Math.random()*(b-a)}
@@ -943,7 +1031,7 @@ function randomize(first){
   nodes.forEach(function(o){x0=Math.min(x0,o.x-o.r);x1=Math.max(x1,o.x+o.r);y0=Math.min(y0,o.y-o.r);y1=Math.max(y1,o.y+o.r)});
   var dx=W/2-(x0+x1)/2,dy=HH/2-(y0+y1)/2;if(S.snap){dx=Math.round(dx/c)*c;dy=Math.round(dy/c)*c}
   nodes.forEach(function(o){o.x+=dx;o.y+=dy});
-  if(!first)pushHist();S.nodes=nodes;S.edges=edges;S.f=Math.min(Math.round(rnd(.35,1.1)*c*2)/2,c*2);sel=-1;from=-1;
+  if(!first)pushHist();S.nodes=nodes;S.edges=edges;S.loop=[];S.f=Math.min(Math.round(rnd(.35,1.1)*c*2)/2,c*2);sel=-1;from=-1;
   $('f').value=S.f;changed();
 }
 $('rnd').addEventListener('click',function(){randomize()});
@@ -958,7 +1046,7 @@ window.addEventListener('keydown',function(e){
   if((e.ctrlKey||e.metaKey)&&k==='z'){e.preventDefault();$(e.shiftKey?'redo':'undo').click();return}
   if((e.ctrlKey||e.metaKey)&&k==='y'){e.preventDefault();$('redo').click();return}
   if(k==='delete'||k==='backspace'){if(sel>=0){e.preventDefault();$('del').click()}return}
-  if(k==='v')setMode('move');else if(k==='a')setMode('add');else if(k==='c')setMode('connect');else if(k==='p')setClean(!clean);else if(k==='r')randomize();
+  if(k==='v')setMode('move');else if(k==='a')setMode('add');else if(k==='c')setMode('connect');else if(k==='p')setClean(!clean);else if(k==='r')randomize();else if(k==='o')setMode('loop');else if(k==='n'&&sel>=0)$('nneg').click();
 });
 
 /* ---------- panel ---------- */
@@ -977,6 +1065,8 @@ $('f').addEventListener('change',function(){fPushed=false});
 FORMATS.forEach(function(f){var o=document.createElement('option');o.value=f.id;o.textContent=f.label;$('fmt').appendChild(o)});
 $('fmt').addEventListener('change',function(){pushHist();S.fmt=this.value;S.nodes.forEach(function(n){n.y=Math.min(n.y,H())});syncAll()});
 $('cols').addEventListener('change',function(){var v=Math.round(parseFloat(this.value));if(!(v>=2&&v<=40)){this.value=S.cols;return}pushHist();S.cols=v;syncAll()});
+$('nneg').addEventListener('change',function(){var n=S.nodes[sel];if(!n)return;pushHist();n.neg=this.checked;changed()});
+$('loopClr').addEventListener('click',function(){if(!S.loop.length)return;pushHist();S.loop=[];changed()});
 $('snapSl').addEventListener('change',function(){S.snapSl=this.checked;syncPanel();save()});
 $('snap').addEventListener('change',function(){pushHist();S.snap=this.checked;save()});
 [['sGrid','grid'],['sConstr','constr'],['sEmpal','empal'],['sTexts','texts']].forEach(function(p){$(p[0]).addEventListener('change',function(){pushHist();S.show[p[1]]=this.checked;layersInfo();changed()})});
