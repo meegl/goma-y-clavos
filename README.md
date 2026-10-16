@@ -1,8 +1,8 @@
-# Mesa de tangentes
+# Goma y clavos
 
 Editor visual para componer formas geométricas con círculos de radio editable, rodeados por un contorno de tangentes, como una goma elástica alrededor de clavos. Exporta a **SVG por capas** (para cualquier programa de vectores) o **PNG**.
 
-**Probarlo:** https://meegl.github.io/mesa-de-tangentes/
+Nace de [Mesa de tangentes](https://meegl.github.io/mesa-de-tangentes/): en lugar de unir círculos con cápsulas, una goma elástica los recorre en orden y los círculos negativos la empujan desde fuera.
 
 ## Uso
 
