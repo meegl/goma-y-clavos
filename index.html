@@ -68,7 +68,6 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
         <button id="redo" title="Rehacer (Ctrl+Mayús+Z)">Rehacer</button>
       </div>
       <button id="rnd" title="Composición aleatoria compacta (R)">Aleatorio</button>
-      <button id="clean" aria-pressed="false" title="Muestra solo la forma y los textos, sin rejilla, círculos ni guías (P)">Vista limpia</button>
     </div>
     <div class="stage" id="stage"><canvas id="cv" aria-label="Lienzo de la composición"></canvas></div>
     <div class="status mono" id="status"></div>
@@ -112,12 +111,17 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
     </section>
 
     <section>
-      <h2>Exportar</h2>
-      <p class="hint" style="margin:0 0 6px">Incluir además de la forma:</p>
-      <label class="inline"><input type="checkbox" id="sGrid">Capa rejilla</label>
+      <h2>Capas visibles</h2>
+      <label class="inline"><input type="checkbox" id="sGrid">Rejilla</label>
       <label class="inline"><input type="checkbox" id="sConstr">Círculos de construcción</label>
       <label class="inline"><input type="checkbox" id="sMarks">Marcas + / −</label>
       <label class="inline"><input type="checkbox" id="sTexts">Textos</label>
+      <label class="inline"><input type="checkbox" id="sGuides">Guías de edición (G)</label>
+      <p class="hint">Se exporta lo que ves, salvo las guías, que nunca se exportan.</p>
+    </section>
+
+    <section>
+      <h2>Exportar</h2>
       <div class="field"><label>Texto abajo izquierda<input type="text" id="ca" maxlength="60"></label></div>
       <div class="row two field">
         <label>Abajo derecha<input type="text" id="cb" maxlength="40"></label>
@@ -272,19 +276,19 @@ var FORMATS=[
   {id:'p50',label:'Póster 50×70 cm',w:500,h:700}
 ];
 var GUIDE='#2B4BFF';
-var S, hist=[], redo=[], mode='move', sel=-1, hover=-1, drag=null, res=null, clean=false, raf=0, saveT=0;
+var S, hist=[], redo=[], mode='move', sel=-1, hover=-1, drag=null, res=null, raf=0, saveT=0;
 
 function defaults(){
   return {fmt:'a4v',cols:12,snap:true,snapSl:false,nodes:[],loop:[],
     caps:{a:'TANGENT series.012',b:'no.004',c:''},
-    show:{grid:false,constr:false,marks:false,texts:false}};
+    show:{grid:true,constr:true,marks:false,texts:false,guides:true}};
 }
 var fresh=true;
 function load(){
   var d=defaults();
   try{var j=JSON.parse(localStorage.getItem(KEY)||'null'); if(j&&Array.isArray(j.nodes)&&FORMATS.some(function(f){return f.id===j.fmt})){
     fresh=false;d.fmt=j.fmt;d.cols=+j.cols||12;d.snap=!!j.snap;d.snapSl=!!j.snapSl;d.nodes=j.nodes;d.caps=j.caps||d.caps;
-    d.show={grid:!!(j.show&&j.show.grid),constr:!!(j.show&&j.show.constr),marks:!!(j.show&&j.show.marks),texts:!!(j.show&&j.show.texts)};
+    if(j.show)['grid','constr','marks','texts','guides'].forEach(function(k){if(k in j.show)d.show[k]=!!j.show[k]});
     // las composiciones de la versión con cápsulas no traen contorno: se rodean todos los círculos
     d.loop=Array.isArray(j.loop)&&j.loop.length?j.loop:angularOrder(d.nodes);}}catch(e){}
   return d;
@@ -329,17 +333,17 @@ function resize(){
 function opts(){var f=fm();return {W:W,H:H(),mmW:f.w,mmH:f.h,cols:S.cols,nodes:S.nodes,d:res?res.d:'',caps:S.caps,show:S.show}}
 function draw(){raf=0;if(res)paint(ctx,dpr*scale,false,false)}
 function paint(c,sc,ex,transp){
-  var o=opts(), px=1/sc, k0=o.mmW/W, hair=ex?0.12/k0:px, full=!ex&&!clean, lean=!ex&&clean;
+  var o=opts(), px=1/sc, k0=o.mmW/W, hair=ex?0.12/k0:px, sh=S.show;
   c.setTransform(sc,0,0,sc,0,0);
   if(!transp){c.fillStyle=TGX.PAPER; c.fillRect(0,0,W,o.H);}
-  if((S.show.grid&&!lean)||full){c.strokeStyle=TGX.GRID;c.lineWidth=hair;c.beginPath();TGX.gridLines(o).forEach(function(l){c.moveTo(l[0],l[1]);c.lineTo(l[2],l[3])});c.stroke();}
+  if(sh.grid){c.strokeStyle=TGX.GRID;c.lineWidth=hair;c.beginPath();TGX.gridLines(o).forEach(function(l){c.moveTo(l[0],l[1]);c.lineTo(l[2],l[3])});c.stroke();}
   if(o.d){c.fillStyle=TGX.INK;c.fill(new Path2D(o.d));}
   var k=o.mmW/W, thin=Math.max(0.25/k,px*0.8);
   c.lineWidth=thin;
-  if((S.show.constr&&!lean)||full){S.nodes.forEach(function(n){c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.arc(n.x,n.y,n.r,0,Math.PI*2);c.stroke()});}
-  if(S.show.marks&&!lean){S.nodes.forEach(function(n){var m=TGX.markLen(n);c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.moveTo(n.x-m,n.y);c.lineTo(n.x+m,n.y);if(!n.neg){c.moveTo(n.x,n.y-m);c.lineTo(n.x,n.y+m)}c.stroke()});}
-  if(S.show.texts||full){c.fillStyle=TGX.INK;TGX.textItems(o).forEach(function(t){c.font=t.fs+'px "Spline Sans Mono",monospace';c.textAlign=t.anchor==='end'?'right':'left';c.fillText(t.t,t.x,t.y)});}
-  if(full) drawGuides(px);
+  if(sh.constr){S.nodes.forEach(function(n){c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.arc(n.x,n.y,n.r,0,Math.PI*2);c.stroke()});}
+  if(sh.marks){S.nodes.forEach(function(n){var m=TGX.markLen(n);c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.moveTo(n.x-m,n.y);c.lineTo(n.x+m,n.y);if(!n.neg){c.moveTo(n.x,n.y-m);c.lineTo(n.x,n.y+m)}c.stroke()});}
+  if(sh.texts){c.fillStyle=TGX.INK;TGX.textItems(o).forEach(function(t){c.font=t.fs+'px "Spline Sans Mono",monospace';c.textAlign=t.anchor==='end'?'right':'left';c.fillText(t.t,t.x,t.y)});}
+  if(!ex&&sh.guides) drawGuides(px);
 }
 function drawGuides(px){
   ctx.strokeStyle=GUIDE; ctx.fillStyle=GUIDE; ctx.lineWidth=1.2*px;
@@ -375,7 +379,7 @@ function layersInfo(){
 }
 function syncAll(){
   $('fmt').value=S.fmt;$('cols').value=S.cols;$('snap').checked=S.snap;$('snapSl').checked=S.snapSl;
-  $('sGrid').checked=S.show.grid;$('sConstr').checked=S.show.constr;$('sMarks').checked=S.show.marks;$('sTexts').checked=S.show.texts;
+  $('sGrid').checked=S.show.grid;$('sConstr').checked=S.show.constr;$('sMarks').checked=S.show.marks;$('sTexts').checked=S.show.texts;$('sGuides').checked=S.show.guides;
   $('ca').value=S.caps.a||'';$('cb').value=S.caps.b||'';$('cc').value=S.caps.c||'';
   updHist();layersInfo();resize();changed();
 }
@@ -482,15 +486,13 @@ function randomize(first){
 $('rnd').addEventListener('click',function(){randomize()});
 $('undo').addEventListener('click',function(){if(!hist.length)return;redo.push(snapshot());restore(hist.pop())});
 $('redo').addEventListener('click',function(){if(!redo.length)return;hist.push(snapshot());restore(redo.pop())});
-function setClean(v){clean=v;$('clean').setAttribute('aria-pressed',v);redraw()}
-$('clean').addEventListener('click',function(){setClean(!clean)});
 window.addEventListener('keydown',function(e){
   var t=e.target&&e.target.tagName; if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA')return;
   var k=e.key.toLowerCase();
   if((e.ctrlKey||e.metaKey)&&k==='z'){e.preventDefault();$(e.shiftKey?'redo':'undo').click();return}
   if((e.ctrlKey||e.metaKey)&&k==='y'){e.preventDefault();$('redo').click();return}
   if(k==='delete'||k==='backspace'){if(sel>=0){e.preventDefault();$('del').click()}return}
-  if(k==='v')setMode('move');else if(k==='a')setMode('add');else if(k==='p')setClean(!clean);else if(k==='r')randomize();else if(k==='o')setMode('loop');else if(k==='n'&&sel>=0)$('nneg').click();
+  if(k==='v')setMode('move');else if(k==='a')setMode('add');else if(k==='g')$('sGuides').click();else if(k==='r')randomize();else if(k==='o')setMode('loop');else if(k==='n'&&sel>=0)$('nneg').click();
 });
 
 /* ---------- panel ---------- */
@@ -511,7 +513,7 @@ $('nin').addEventListener('change',function(){if(sel<0)return;pushHist();var at=
 $('loopClr').addEventListener('click',function(){if(!S.loop.length)return;pushHist();S.loop=[];changed()});
 $('snapSl').addEventListener('change',function(){S.snapSl=this.checked;syncPanel();save()});
 $('snap').addEventListener('change',function(){pushHist();S.snap=this.checked;save()});
-[['sGrid','grid'],['sConstr','constr'],['sMarks','marks'],['sTexts','texts']].forEach(function(p){$(p[0]).addEventListener('change',function(){pushHist();S.show[p[1]]=this.checked;layersInfo();changed()})});
+[['sGrid','grid'],['sConstr','constr'],['sMarks','marks'],['sTexts','texts'],['sGuides','guides']].forEach(function(p){$(p[0]).addEventListener('change',function(){S.show[p[1]]=this.checked;layersInfo();redraw();save()})});
 [['ca','a'],['cb','b'],['cc','c']].forEach(function(p){var t;$(p[0]).addEventListener('input',function(){S.caps[p[1]]=this.value;redraw();save()})});
 
 /* ---------- exportar ---------- */
