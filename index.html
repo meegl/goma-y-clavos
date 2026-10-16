@@ -68,7 +68,7 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
         <button id="redo" title="Rehacer (Ctrl+Mayús+Z)">Rehacer</button>
       </div>
       <button id="rnd" title="Composición aleatoria compacta (R)">Aleatorio</button>
-      <button id="clean" aria-pressed="false" title="Muestra solo lo que se exporta, según las capas marcadas en Exportar (P)">Vista limpia</button>
+      <button id="clean" aria-pressed="false" title="Muestra solo la forma y los textos, sin rejilla, círculos ni guías (P)">Vista limpia</button>
     </div>
     <div class="stage" id="stage"><canvas id="cv" aria-label="Lienzo de la composición"></canvas></div>
     <div class="status mono" id="status"></div>
@@ -329,15 +329,15 @@ function resize(){
 function opts(){var f=fm();return {W:W,H:H(),mmW:f.w,mmH:f.h,cols:S.cols,nodes:S.nodes,d:res?res.d:'',caps:S.caps,show:S.show}}
 function draw(){raf=0;if(res)paint(ctx,dpr*scale,false,false)}
 function paint(c,sc,ex,transp){
-  var o=opts(), px=1/sc, k0=o.mmW/W, hair=ex?0.12/k0:px, full=!ex&&!clean;
+  var o=opts(), px=1/sc, k0=o.mmW/W, hair=ex?0.12/k0:px, full=!ex&&!clean, lean=!ex&&clean;
   c.setTransform(sc,0,0,sc,0,0);
   if(!transp){c.fillStyle=TGX.PAPER; c.fillRect(0,0,W,o.H);}
-  if(S.show.grid||full){c.strokeStyle=TGX.GRID;c.lineWidth=hair;c.beginPath();TGX.gridLines(o).forEach(function(l){c.moveTo(l[0],l[1]);c.lineTo(l[2],l[3])});c.stroke();}
+  if((S.show.grid&&!lean)||full){c.strokeStyle=TGX.GRID;c.lineWidth=hair;c.beginPath();TGX.gridLines(o).forEach(function(l){c.moveTo(l[0],l[1]);c.lineTo(l[2],l[3])});c.stroke();}
   if(o.d){c.fillStyle=TGX.INK;c.fill(new Path2D(o.d));}
   var k=o.mmW/W, thin=Math.max(0.25/k,px*0.8);
   c.lineWidth=thin;
-  if(S.show.constr||full){S.nodes.forEach(function(n){c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.arc(n.x,n.y,n.r,0,Math.PI*2);c.stroke()});}
-  if(S.show.marks){S.nodes.forEach(function(n){var m=TGX.markLen(n);c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.moveTo(n.x-m,n.y);c.lineTo(n.x+m,n.y);if(!n.neg){c.moveTo(n.x,n.y-m);c.lineTo(n.x,n.y+m)}c.stroke()});}
+  if((S.show.constr&&!lean)||full){S.nodes.forEach(function(n){c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.arc(n.x,n.y,n.r,0,Math.PI*2);c.stroke()});}
+  if(S.show.marks&&!lean){S.nodes.forEach(function(n){var m=TGX.markLen(n);c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.moveTo(n.x-m,n.y);c.lineTo(n.x+m,n.y);if(!n.neg){c.moveTo(n.x,n.y-m);c.lineTo(n.x,n.y+m)}c.stroke()});}
   if(S.show.texts||full){c.fillStyle=TGX.INK;TGX.textItems(o).forEach(function(t){c.font=t.fs+'px "Spline Sans Mono",monospace';c.textAlign=t.anchor==='end'?'right':'left';c.fillText(t.t,t.x,t.y)});}
   if(full) drawGuides(px);
 }
