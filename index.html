@@ -115,18 +115,12 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
       <label class="inline"><input type="checkbox" id="sGrid">Rejilla</label>
       <label class="inline"><input type="checkbox" id="sConstr">Círculos de construcción</label>
       <label class="inline"><input type="checkbox" id="sMarks">Marcas + / −</label>
-      <label class="inline"><input type="checkbox" id="sTexts">Textos</label>
       <label class="inline"><input type="checkbox" id="sGuides">Guías de edición (G)</label>
       <p class="hint">Se exporta lo que ves, salvo las guías, que nunca se exportan.</p>
     </section>
 
     <section>
       <h2>Exportar</h2>
-      <div class="field"><label>Texto abajo izquierda<input type="text" id="ca" maxlength="60"></label></div>
-      <div class="row two field">
-        <label>Abajo derecha<input type="text" id="cb" maxlength="40"></label>
-        <label>Arriba izquierda<input type="text" id="cc" maxlength="60"></label>
-      </div>
       <div class="btns">
         <button id="dl" class="primary" hidden>Descargar SVG</button>
         <button id="copy">Copiar SVG</button>
@@ -209,22 +203,14 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
   'use strict';
   var PAPER = '#F4F1EA', INK = '#0B0B0B', GRID = '#CFC9BA';
 
-  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
   function n(v) { return String(Math.round(v * 1000) / 1000); }
 
-  // o: {W,H,mmW,mmH,cols,nodes,d,caps,show}
+  // o: {W,H,mmW,mmH,cols,nodes,d,show}
   function gridLines(o) {
     var cell = o.W / o.cols, out = [], x, y;
     for (x = 0; x <= o.W + 1e-6; x += cell) out.push([x, 0, x, o.H]);
     for (y = 0; y <= o.H + 1e-6; y += cell) out.push([0, y, o.W, y]);
     return out;
-  }
-  function textItems(o) {
-    var k = o.mmW / o.W, m = 8 / k, fs = 2.8 / k, it = [], c = o.caps || {};
-    if (c.a) it.push({ t: c.a, x: m, y: o.H - m, anchor: 'start', fs: fs });
-    if (c.b) it.push({ t: c.b, x: o.W - m, y: o.H - m, anchor: 'end', fs: fs });
-    if (c.c) it.push({ t: c.c, x: m, y: m + fs, anchor: 'start', fs: fs });
-    return it;
   }
   function markLen(nd) { return Math.min(nd.r * 0.22, 9); }
   function build(o) {
@@ -250,17 +236,11 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
         return '<path d="' + d + '" stroke="' + (nd.neg ? INK : PAPER) + '"/>';
       }).join('') + '</g>');
     }
-    if (s.texts) {
-      var tx = textItems(o).map(function (t) {
-        return '<text x="' + n(t.x) + '" y="' + n(t.y) + '" text-anchor="' + t.anchor + '" font-size="' + n(t.fs) + '">' + esc(t.t) + '</text>';
-      }).join('');
-      if (tx) g.push('<g id="textos" fill="' + INK + '" font-family="\'Spline Sans Mono\', \'Courier New\', monospace">' + tx + '</g>');
-    }
     return '<?xml version="1.0" encoding="UTF-8"?>\n' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="' + n(o.mmW) + 'mm" height="' + n(o.mmH) + 'mm" viewBox="0 0 ' + n(o.W) + ' ' + n(o.H) + '">\n' +
       '<title>Tangent series</title>\n' + g.join('\n') + '\n</svg>\n';
   }
-  return { build: build, gridLines: gridLines, textItems: textItems, markLen: markLen, PAPER: PAPER, INK: INK, GRID: GRID };
+  return { build: build, gridLines: gridLines, markLen: markLen, PAPER: PAPER, INK: INK, GRID: GRID };
 });
 
 </script>
@@ -280,15 +260,14 @@ var S, hist=[], redo=[], mode='move', sel=-1, hover=-1, drag=null, res=null, raf
 
 function defaults(){
   return {fmt:'a4v',cols:12,snap:true,snapSl:false,nodes:[],loop:[],
-    caps:{a:'TANGENT series.012',b:'no.004',c:''},
-    show:{grid:true,constr:true,marks:false,texts:false,guides:true}};
+    show:{grid:true,constr:true,marks:false,guides:true}};
 }
 var fresh=true;
 function load(){
   var d=defaults();
   try{var j=JSON.parse(localStorage.getItem(KEY)||'null'); if(j&&Array.isArray(j.nodes)&&FORMATS.some(function(f){return f.id===j.fmt})){
-    fresh=false;d.fmt=j.fmt;d.cols=+j.cols||12;d.snap=!!j.snap;d.snapSl=!!j.snapSl;d.nodes=j.nodes;d.caps=j.caps||d.caps;
-    if(j.show)['grid','constr','marks','texts','guides'].forEach(function(k){if(k in j.show)d.show[k]=!!j.show[k]});
+    fresh=false;d.fmt=j.fmt;d.cols=+j.cols||12;d.snap=!!j.snap;d.snapSl=!!j.snapSl;d.nodes=j.nodes;
+    if(j.show)['grid','constr','marks','guides'].forEach(function(k){if(k in j.show)d.show[k]=!!j.show[k]});
     // las composiciones de la versión con cápsulas no traen contorno: se rodean todos los círculos
     d.loop=Array.isArray(j.loop)&&j.loop.length?j.loop:angularOrder(d.nodes);}}catch(e){}
   return d;
@@ -330,7 +309,7 @@ function resize(){
   cv.width=Math.round(w*dpr); cv.height=Math.round(w*f.h/f.w*dpr);
   scale=w/W; draw();
 }
-function opts(){var f=fm();return {W:W,H:H(),mmW:f.w,mmH:f.h,cols:S.cols,nodes:S.nodes,d:res?res.d:'',caps:S.caps,show:S.show}}
+function opts(){var f=fm();return {W:W,H:H(),mmW:f.w,mmH:f.h,cols:S.cols,nodes:S.nodes,d:res?res.d:'',show:S.show}}
 function draw(){raf=0;if(res)paint(ctx,dpr*scale,false,false)}
 function paint(c,sc,ex,transp){
   var o=opts(), px=1/sc, k0=o.mmW/W, hair=ex?0.12/k0:px, sh=S.show;
@@ -342,7 +321,6 @@ function paint(c,sc,ex,transp){
   c.lineWidth=thin;
   if(sh.constr){S.nodes.forEach(function(n){c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.arc(n.x,n.y,n.r,0,Math.PI*2);c.stroke()});}
   if(sh.marks){S.nodes.forEach(function(n){var m=TGX.markLen(n);c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.moveTo(n.x-m,n.y);c.lineTo(n.x+m,n.y);if(!n.neg){c.moveTo(n.x,n.y-m);c.lineTo(n.x,n.y+m)}c.stroke()});}
-  if(sh.texts){c.fillStyle=TGX.INK;TGX.textItems(o).forEach(function(t){c.font=t.fs+'px "Spline Sans Mono",monospace';c.textAlign=t.anchor==='end'?'right':'left';c.fillText(t.t,t.x,t.y)});}
   if(!ex&&sh.guides) drawGuides(px);
 }
 function drawGuides(px){
@@ -374,13 +352,12 @@ function updHist(){$('undo').disabled=!hist.length;$('redo').disabled=!redo.leng
 function save(){clearTimeout(saveT);saveT=setTimeout(function(){try{localStorage.setItem(KEY,snapshot())}catch(e){}},300)}
 function changed(){compute();syncPanel();redraw();save()}
 function layersInfo(){
-  var l=['fondo','forma'];if(S.show.grid)l.splice(1,0,'rejilla');if(S.show.constr)l.push('circulos-construccion');if(S.show.marks)l.push('marcas');if(S.show.texts)l.push('textos');
+  var l=['fondo','forma'];if(S.show.grid)l.splice(1,0,'rejilla');if(S.show.constr)l.push('circulos-construccion');if(S.show.marks)l.push('marcas');
   $('exinfo').textContent='Capas del SVG: '+l.join(', ')+'.';
 }
 function syncAll(){
   $('fmt').value=S.fmt;$('cols').value=S.cols;$('snap').checked=S.snap;$('snapSl').checked=S.snapSl;
-  $('sGrid').checked=S.show.grid;$('sConstr').checked=S.show.constr;$('sMarks').checked=S.show.marks;$('sTexts').checked=S.show.texts;$('sGuides').checked=S.show.guides;
-  $('ca').value=S.caps.a||'';$('cb').value=S.caps.b||'';$('cc').value=S.caps.c||'';
+  $('sGrid').checked=S.show.grid;$('sConstr').checked=S.show.constr;$('sMarks').checked=S.show.marks;$('sGuides').checked=S.show.guides;
   updHist();layersInfo();resize();changed();
 }
 function syncPanel(){
@@ -513,12 +490,11 @@ $('nin').addEventListener('change',function(){if(sel<0)return;pushHist();var at=
 $('loopClr').addEventListener('click',function(){if(!S.loop.length)return;pushHist();S.loop=[];changed()});
 $('snapSl').addEventListener('change',function(){S.snapSl=this.checked;syncPanel();save()});
 $('snap').addEventListener('change',function(){pushHist();S.snap=this.checked;save()});
-[['sGrid','grid'],['sConstr','constr'],['sMarks','marks'],['sTexts','texts'],['sGuides','guides']].forEach(function(p){$(p[0]).addEventListener('change',function(){S.show[p[1]]=this.checked;layersInfo();redraw();save()})});
-[['ca','a'],['cb','b'],['cc','c']].forEach(function(p){var t;$(p[0]).addEventListener('input',function(){S.caps[p[1]]=this.value;redraw();save()})});
+[['sGrid','grid'],['sConstr','constr'],['sMarks','marks'],['sGuides','guides']].forEach(function(p){$(p[0]).addEventListener('change',function(){S.show[p[1]]=this.checked;layersInfo();redraw();save()})});
 
 /* ---------- exportar ---------- */
 function svgText(){compute();return TGX.build(opts())}
-function fname(ext){var b=(S.caps.b||'forma').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'forma';return 'tangent-series-'+b+'.'+(ext||'svg')}
+function fname(ext){return 'mesa-de-tangentes.'+(ext||'svg')}
 var dlApi=null;
 if(!(window.claude&&claude.use)){
   // fuera de Claude (p. ej. GitHub Pages): descarga normal del navegador

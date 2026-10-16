@@ -12,7 +12,7 @@ Editor visual para componer formas geométricas con círculos de radio editable,
 - **Negativo** (`N`): el círculo empuja la goma desde fuera y deja un arco cóncavo. Entre círculos de distinto signo, la recta tangente es cruzada.
 - **En el contorno**: en el panel del círculo seleccionado, lo mete o lo saca del contorno sin borrarlo.
 - **Aleatorio** (`R`), deshacer/rehacer (`Ctrl+Z`).
-- **Capas visibles**: rejilla, círculos de construcción, marcas + / −, textos y guías (`G`). Se exporta lo que ves, salvo las guías, en capas con nombre: `fondo`, `rejilla`, `forma`, `circulos-construccion`, `marcas`, `textos`.
+- **Capas visibles**: rejilla, círculos de construcción, marcas + / − y guías (`G`). Se exporta lo que ves, salvo las guías, en capas con nombre: `fondo`, `rejilla`, `forma`, `circulos-construccion`, `marcas`.
 
 ## Cómo está hecho
 
