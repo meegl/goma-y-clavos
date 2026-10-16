@@ -189,6 +189,7 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
     }
     parts.push('Z');
     res.d = parts.join('');
+    res.segs = segs.map(function (g) { return [g.p0, g.p1]; });
     return res;
   }
 
@@ -440,25 +441,49 @@ function removeNode(i){
 $('del').addEventListener('click',function(){if(sel<0)return;pushHist();removeNode(sel);changed()});
 $('dup').addEventListener('click',function(){if(sel<0)return;pushHist();var n=S.nodes[sel],c=cell();S.nodes.push({x:Math.min(W,n.x+c),y:Math.min(H(),n.y+c),r:n.r,neg:!!n.neg});var i=S.nodes.length-1;if(S.loop.indexOf(sel)>=0)insertInLoop(i);sel=i;changed()});
 function randomize(first){
-  // clavos en una rejilla de paso 2 celdas, recorridos por ángulo; algunos negativos sueltos
-  var c=cell(),HH=H(),st=2*c,gx=Math.floor((W-4*c)/st),gy=Math.floor((HH-4*c)/st),best=null;
+  // positivos de tamaños variados en una zona al azar del papel; entre dos vecinos,
+  // a veces un negativo empujado hacia dentro que abre una muesca
+  var c=cell(),HH=H(),u=W/12,m=1.2*u,best=null;
   function rnd(a,b){return a+Math.random()*(b-a)}
   function pick(a){return a[Math.floor(Math.random()*a.length)]}
+  function sn(v){return S.snap?Math.round(v/c)*c:v}
+  function sr(r){var q=c/4;return S.snap?Math.max(q,Math.round(r/q)*q):r}
+  function free(ns,x,y,r,gap){return ns.every(function(o){return Math.hypot(x-o.x,y-o.y)>=o.r+r+gap})}
+  function inPage(x,y,r){return x-r>=m/2&&x+r<=W-m/2&&y-r>=m/2&&y+r<=HH-m/2}
   for(var t=0;t<300&&!best;t++){
-    var cw=3+Math.floor(Math.random()*2),ch=4+Math.floor(Math.random()*2),n=6+Math.floor(Math.random()*6),cells=[],nodes=[];
-    for(var a=0;a<cw;a++)for(var b=0;b<ch;b++)cells.push([a,b]);
-    cells.sort(function(){return Math.random()-.5});
-    var ox=Math.round(gx/2-cw/2),oy=Math.round(gy/2-ch/2);
-    cells.slice(0,n).forEach(function(q){nodes.push({x:2*c+(ox+q[0])*st,y:2*c+(oy+q[1])*st,r:pick([.75,.75,.75,.5,1.25])*c,neg:false})});
-    var loop=angularOrder(nodes);
-    loop.forEach(function(k,j){var prev=nodes[loop[(j+loop.length-1)%loop.length]];if(j&&!prev.neg&&Math.random()<.35){nodes[k].neg=true;nodes[k].r=.75*c}});
-    var lc=loop.map(function(k){var o=nodes[k];return {x:o.x,y:o.y,r:o.r,neg:o.neg,k:k}});
-    var ok=nodes.every(function(o,i){return nodes.every(function(q,j){return i===j||Math.hypot(o.x-q.x,o.y-q.y)>o.r+q.r+c*.2})});
-    var r=ok&&TB.solve(lc);
-    if(r&&r.ok&&r.d&&lc.filter(function(o){return !o.neg}).length>=3)best={nodes:nodes,loop:loop};
+    var bw=rnd(.45,1)*(W-2*m),bh=rnd(.35,1)*(HH-2*m),bx=m+Math.random()*(W-2*m-bw),by=m+Math.random()*(HH-2*m-bh);
+    var nodes=[],np=4+Math.floor(Math.random()*6),tries=0;
+    while(nodes.length<np&&tries++<400){
+      var r=sr(pick([.5,.5,.75,.75,1,1.25,1.75])*u),x=sn(rnd(bx,bx+bw)),y=sn(rnd(by,by+bh));
+      if(inPage(x,y,r)&&free(nodes,x,y,r,.6*u))nodes.push({x:x,y:y,r:r,neg:false});
+    }
+    if(nodes.length<3)continue;
+    var ring=angularOrder(nodes),cx=0,cy=0,loop=[];
+    nodes.forEach(function(o){cx+=o.x/nodes.length;cy+=o.y/nodes.length});
+    ring.forEach(function(k,j){
+      loop.push(k);
+      if(Math.random()<.45)return;
+      var A=nodes[k],B=nodes[ring[(j+1)%ring.length]],mx=(A.x+B.x)/2,my=(A.y+B.y)/2;
+      var dx=cx-mx,dy=cy-my,dl=Math.hypot(dx,dy)||1,push=rnd(.25,.75)*dl;
+      var r=sr(pick([.5,.75,.75,1])*u),x=sn(mx+dx/dl*push),y=sn(my+dy/dl*push);
+      if(inPage(x,y,r)&&free(nodes,x,y,r,.25*u)){nodes.push({x:x,y:y,r:r,neg:true});loop.push(nodes.length-1)}
+    });
+    if(loop.length===ring.length)continue;
+    var res0=TB.solve(loop.map(function(k){var o=nodes[k];return {x:o.x,y:o.y,r:o.r,neg:o.neg,k:k}}));
+    if(res0.ok&&res0.d&&!selfCross(res0.segs))best={nodes:nodes,loop:loop};
   }
   if(!best)return;
   if(!first)pushHist();S.nodes=best.nodes;S.loop=best.loop;sel=-1;changed();
+}
+// ¿se cruzan dos tangentes no consecutivas del contorno?
+function selfCross(sg){
+  function side(a,b,p){return (b[0]-a[0])*(p[1]-a[1])-(b[1]-a[1])*(p[0]-a[0])}
+  for(var i=0;i<sg.length;i++)for(var j=i+2;j<sg.length;j++){
+    if(i===0&&j===sg.length-1)continue;
+    var a=sg[i],b=sg[j];
+    if(side(a[0],a[1],b[0])*side(a[0],a[1],b[1])<0&&side(b[0],b[1],a[0])*side(b[0],b[1],a[1])<0)return true;
+  }
+  return false;
 }
 $('rnd').addEventListener('click',function(){randomize()});
 $('undo').addEventListener('click',function(){if(!hist.length)return;redo.push(snapshot());restore(hist.pop())});
