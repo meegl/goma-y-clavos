@@ -68,8 +68,7 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
         <button id="redo" title="Rehacer (Ctrl+Mayús+Z)">Rehacer</button>
       </div>
       <button id="rnd" title="Composición aleatoria compacta (R)">Aleatorio</button>
-      <button id="guides" aria-pressed="true" title="Mostrar guías de edición">Guías</button>
-      <button id="clean" aria-pressed="false" title="Vista previa de lo que se exporta, sin guías (P)">Vista limpia</button>
+      <button id="clean" aria-pressed="false" title="Muestra solo lo que se exporta, según las capas marcadas en Exportar (P)">Vista limpia</button>
     </div>
     <div class="stage" id="stage"><canvas id="cv" aria-label="Lienzo de la composición"></canvas></div>
     <div class="status mono" id="status"></div>
@@ -273,7 +272,7 @@ var FORMATS=[
   {id:'p50',label:'Póster 50×70 cm',w:500,h:700}
 ];
 var GUIDE='#2B4BFF';
-var S, hist=[], redo=[], mode='move', sel=-1, hover=-1, drag=null, res=null, showGuides=true, clean=false, raf=0, saveT=0;
+var S, hist=[], redo=[], mode='move', sel=-1, hover=-1, drag=null, res=null, clean=false, raf=0, saveT=0;
 
 function defaults(){
   return {fmt:'a4v',cols:12,snap:true,snapSl:false,nodes:[],loop:[],
@@ -340,7 +339,7 @@ function paint(c,sc,ex,transp){
   if(S.show.constr||full){S.nodes.forEach(function(n){c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.arc(n.x,n.y,n.r,0,Math.PI*2);c.stroke()});}
   if(S.show.marks){S.nodes.forEach(function(n){var m=TGX.markLen(n);c.strokeStyle=n.neg?TGX.INK:TGX.PAPER;c.beginPath();c.moveTo(n.x-m,n.y);c.lineTo(n.x+m,n.y);if(!n.neg){c.moveTo(n.x,n.y-m);c.lineTo(n.x,n.y+m)}c.stroke()});}
   if(S.show.texts||full){c.fillStyle=TGX.INK;TGX.textItems(o).forEach(function(t){c.font=t.fs+'px "Spline Sans Mono",monospace';c.textAlign=t.anchor==='end'?'right':'left';c.fillText(t.t,t.x,t.y)});}
-  if(!ex&&showGuides&&!clean) drawGuides(px);
+  if(full) drawGuides(px);
 }
 function drawGuides(px){
   ctx.strokeStyle=GUIDE; ctx.fillStyle=GUIDE; ctx.lineWidth=1.2*px;
@@ -485,7 +484,6 @@ $('undo').addEventListener('click',function(){if(!hist.length)return;redo.push(s
 $('redo').addEventListener('click',function(){if(!redo.length)return;hist.push(snapshot());restore(redo.pop())});
 function setClean(v){clean=v;$('clean').setAttribute('aria-pressed',v);redraw()}
 $('clean').addEventListener('click',function(){setClean(!clean)});
-$('guides').addEventListener('click',function(){showGuides=!showGuides;this.setAttribute('aria-pressed',showGuides);redraw()});
 window.addEventListener('keydown',function(e){
   var t=e.target&&e.target.tagName; if(t==='INPUT'||t==='SELECT'||t==='TEXTAREA')return;
   var k=e.key.toLowerCase();
