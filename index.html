@@ -125,6 +125,11 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
         <button id="dl" class="primary" hidden>Descargar SVG</button>
         <button id="copy">Copiar SVG</button>
       </div>
+      <div class="row two field">
+        <label>Tamaño PNG<select id="pngw"><option value="1200">1200 px de ancho</option><option value="2400" selected>2400 px de ancho</option><option value="3000">3000 px de ancho</option></select></label>
+        <label class="inline" style="align-self:end;padding-bottom:6px"><input type="checkbox" id="pngT">Transparente</label>
+      </div>
+      <div class="btns"><button id="dlpng" hidden>Descargar PNG</button></div>
       <textarea id="ta" readonly></textarea>
       <p class="hint" id="exinfo">Capas: fondo, rejilla, forma, círculos-construcción, textos.</p>
     </section>
@@ -783,19 +788,19 @@ function resize(){
   scale=w/W; draw();
 }
 function opts(){var f=fm();return {W:W,H:H(),mmW:f.w,mmH:f.h,cols:S.cols,nodes:S.nodes,edges:S.edges,d:res?res.d:'',balls:res?res.balls:[],caps:S.caps,show:S.show}}
-function draw(){
-  raf=0; if(!res)return;
-  var o=opts(), px=1/scale;
-  ctx.setTransform(dpr*scale,0,0,dpr*scale,0,0);
-  ctx.fillStyle=TGX.PAPER; ctx.fillRect(0,0,W,o.H);
-  if(S.show.grid&&!clean){ctx.strokeStyle=TGX.GRID;ctx.lineWidth=px;ctx.beginPath();TGX.gridLines(o).forEach(function(l){ctx.moveTo(l[0],l[1]);ctx.lineTo(l[2],l[3])});ctx.stroke();}
-  if(o.d){ctx.fillStyle=TGX.INK;ctx.fill(new Path2D(o.d),'evenodd');}
+function draw(){raf=0;if(res)paint(ctx,dpr*scale,false,false)}
+function paint(c,sc,ex,transp){
+  var o=opts(), px=1/sc, k0=o.mmW/W, hair=ex?0.12/k0:px;
+  c.setTransform(sc,0,0,sc,0,0);
+  if(!transp){c.fillStyle=TGX.PAPER; c.fillRect(0,0,W,o.H);}
+  if(S.show.grid&&(ex||!clean)){c.strokeStyle=TGX.GRID;c.lineWidth=hair;c.beginPath();TGX.gridLines(o).forEach(function(l){c.moveTo(l[0],l[1]);c.lineTo(l[2],l[3])});c.stroke();}
+  if(o.d){c.fillStyle=TGX.INK;c.fill(new Path2D(o.d),'evenodd');}
   var k=o.mmW/W, thin=Math.max(0.25/k,px*0.8);
-  ctx.lineWidth=thin;
-  if(S.show.constr&&!clean){ctx.strokeStyle=TGX.PAPER;S.nodes.forEach(function(n){ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);ctx.stroke()});}
-  if(S.show.empal&&!clean){ctx.strokeStyle=TGX.INK;(res.balls||[]).forEach(function(b){ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.stroke()});}
-  if(S.show.texts){ctx.fillStyle=TGX.INK;TGX.textItems(o).forEach(function(t){ctx.font=t.fs+'px "Spline Sans Mono",monospace';ctx.textAlign=t.anchor==='end'?'right':'left';ctx.fillText(t.t,t.x,t.y)});}
-  if(showGuides&&!clean) drawGuides(px);
+  c.lineWidth=thin;
+  if(S.show.constr&&(ex||!clean)){c.strokeStyle=TGX.PAPER;S.nodes.forEach(function(n){c.beginPath();c.arc(n.x,n.y,n.r,0,Math.PI*2);c.stroke()});}
+  if(S.show.empal&&(ex||!clean)){c.strokeStyle=TGX.INK;(res.balls||[]).forEach(function(b){c.beginPath();c.arc(b.x,b.y,b.r,0,Math.PI*2);c.stroke()});}
+  if(S.show.texts){c.fillStyle=TGX.INK;TGX.textItems(o).forEach(function(t){c.font=t.fs+'px "Spline Sans Mono",monospace';c.textAlign=t.anchor==='end'?'right':'left';c.fillText(t.t,t.x,t.y)});}
+  if(!ex&&showGuides&&!clean) drawGuides(px);
 }
 function drawGuides(px){
   ctx.strokeStyle=GUIDE; ctx.fillStyle=GUIDE; ctx.lineWidth=1.2*px;
@@ -972,17 +977,27 @@ $('snap').addEventListener('change',function(){pushHist();S.snap=this.checked;sa
 
 /* ---------- exportar ---------- */
 function svgText(){compute();return TGX.build(opts())}
-function fname(){var b=(S.caps.b||'forma').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'forma';return 'tangent-series-'+b+'.svg'}
+function fname(ext){var b=(S.caps.b||'forma').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'forma';return 'tangent-series-'+b+'.'+(ext||'svg')}
 var dlApi=null;
 if(!(window.claude&&claude.use)){
   // fuera de Claude (p. ej. GitHub Pages): descarga normal del navegador
-  dlApi={save:function(r){return new Promise(function(res){var u=URL.createObjectURL(new Blob([r.data],{type:'image/svg+xml'})),l=document.createElement('a');l.href=u;l.download=r.filename;document.body.appendChild(l);l.click();l.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000);res({status:'saved'})})}};
-  $('dl').hidden=false;
-}else{claude.use('downloads').then(function(d){if(d){dlApi=d;$('dl').hidden=false}}).catch(function(){})}
+  dlApi={save:function(r){return new Promise(function(res){var u=URL.createObjectURL(new Blob([r.data],{type:/\.png$/.test(r.filename)?'image/png':'image/svg+xml'})),l=document.createElement('a');l.href=u;l.download=r.filename;document.body.appendChild(l);l.click();l.remove();setTimeout(function(){URL.revokeObjectURL(u)},4000);res({status:'saved'})})}};
+  $('dl').hidden=false;$('dlpng').hidden=false;
+}else{claude.use('downloads').then(function(d){if(d){dlApi=d;$('dl').hidden=false;$('dlpng').hidden=false}}).catch(function(){})}
 $('dl').addEventListener('click',function(){
   if(!dlApi)return; var info=$('exinfo');
-  dlApi.save({filename:fname(),data:svgText()}).then(function(){info.textContent='SVG guardado. Ábrelo en Illustrator: cada capa llega con su nombre.'})
+  dlApi.save({filename:fname('svg'),data:svgText()}).then(function(){info.textContent='SVG guardado. Ábrelo en Illustrator: cada capa llega con su nombre.'})
   .catch(function(err){var c=err&&err.code;info.textContent=c==='declined'?'Descarga cancelada.':(c==='rate_limited'?'Espera un momento y vuelve a intentarlo.':'No se pudo descargar aquí. Usa «Copiar SVG» y guárdalo como .svg.')});
+});
+$('dlpng').addEventListener('click',function(){
+  if(!dlApi)return;var info=$('exinfo');compute();
+  var w=+$('pngw').value,c=document.createElement('canvas');c.width=w;c.height=Math.round(w*H()/W);
+  paint(c.getContext('2d'),w/W,true,$('pngT').checked);
+  c.toBlob(function(bl){
+    if(!bl){info.textContent='No se pudo generar el PNG. Prueba con un tamaño menor.';return}
+    dlApi.save({filename:fname('png'),data:bl}).then(function(){info.textContent='PNG guardado ('+w+' px de ancho).'})
+    .catch(function(err){var cd=err&&err.code;info.textContent=cd==='declined'?'Descarga cancelada.':'No se pudo descargar el PNG aquí.'});
+  },'image/png');
 });
 $('copy').addEventListener('click',function(){
   var s=svgText(),ta=$('ta'),info=$('exinfo');
