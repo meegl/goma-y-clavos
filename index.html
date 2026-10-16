@@ -248,7 +248,7 @@ textarea{display:none;width:100%;height:80px;margin-top:8px;font:12px "Spline Sa
 <script>
 (function(){
 'use strict';
-var W=600, KEY='goma-y-clavos-v1', OLDKEY='mesa-de-tangentes-v1';
+var W=600, KEY='goma-y-clavos-v1';
 var FORMATS=[
   {id:'a4v',label:'A4 vertical · 210×297 mm',w:210,h:297},
   {id:'a3v',label:'A3 vertical · 297×420 mm',w:297,h:420},
@@ -266,11 +266,10 @@ function defaults(){
 var fresh=true;
 function load(){
   var d=defaults();
-  try{var j=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem(OLDKEY)||'null'); if(j&&Array.isArray(j.nodes)&&FORMATS.some(function(f){return f.id===j.fmt})){
+  try{var j=JSON.parse(localStorage.getItem(KEY)||'null'); if(j&&Array.isArray(j.nodes)&&FORMATS.some(function(f){return f.id===j.fmt})){
     fresh=false;d.fmt=j.fmt;d.cols=+j.cols||12;d.snap=!!j.snap;d.snapSl=!!j.snapSl;d.nodes=j.nodes;
     if(j.show)['grid','constr','marks','guides'].forEach(function(k){if(k in j.show)d.show[k]=!!j.show[k]});
-    // las composiciones de la versión con cápsulas no traen contorno: se rodean todos los círculos
-    d.loop=Array.isArray(j.loop)&&j.loop.length?j.loop:angularOrder(d.nodes);}}catch(e){}
+    d.loop=Array.isArray(j.loop)?j.loop:[];}}catch(e){}
   return d;
 }
 function angularOrder(nodes){
